@@ -7,8 +7,9 @@ Note:
 3. Backup operation will output one unique string as target backup id
    if succeed. User need to store it themselves as it's required in
    following restore operation.
-4. The du command will return disk usage in MBs.
-5. More options see "python rbd_backup.py -h".
+4. After restore, use need to do full backup next time.
+5. The du command will return disk usage in MBs.
+6. More options see "python rbd_backup.py -h".
 
 Backup:
 [root@node-6 ~]# python rbd_backup.py -p rbd -i tmpimage -r rbd2 -u root -d node-7 -o backup -m full

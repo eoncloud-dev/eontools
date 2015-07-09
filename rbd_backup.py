@@ -200,7 +200,8 @@ def backup_image(pool, image, mode):
         # example:
         # rbd -p rbd export bkp_test_1 - | ssh root@node-7 rbd import -
         # bkp_test_1 -p rbd-bkp
-        cmd = "rbd export-diff %s/%s@%s - 2>/dev/null| ssh %s@%s rbd import - %s -p %s 2>/dev/null" \
+        #cmd = "rbd export-diff %s/%s@%s - 2>/dev/null| ssh %s@%s rbd import - %s -p %s 2>/dev/null" \
+        cmd = "rbd export %s/%s@%s - 2>/dev/null | ssh %s@%s rbd import - %s -p %s 2>/dev/null" \
                 % (pool, image, snap, g_user, g_host, target_image, g_remote_pool)
         rc, output = execute_cmd(cmd)
         logging.debug("backup_image: rc %d.", (rc))
@@ -294,7 +295,7 @@ def restore_image(pool, image, snapname):
     rc, output = execute_cmd(cmd)
     # ignore checking rc as image may not exist
 
-    cmd = "rbd -p %s mv %s %s" % (pool, tmp_image, image)
+    cmd = "rbd mv %s/%s %s/%s" % (pool, tmp_image, pool, image)
     rc, output = execute_cmd(cmd)
     logging.debug("restore_image: rename image %s to %s, rc %d.",
                     *(tmp_image, image, rc))
@@ -302,6 +303,7 @@ def restore_image(pool, image, snapname):
         logging.debug("failed to rename %s to %s.", *(tmp_image, image))
         sys.exit(rc)
 
+    """
     # After restore, we need to create one more full backup image on remote to
     # hold all following incremental snapshots.
     # build a local snapshot
@@ -319,6 +321,7 @@ def restore_image(pool, image, snapname):
     if rc1 != 0 or rc2 != 0:
         logging.debug("failed to create snapshot, rc1 %d, rc2 %d.", *(rc1, rc2))
         sys.exit(1)
+    """
 
     return rc
 
