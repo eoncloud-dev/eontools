@@ -1,0 +1,27 @@
+[Ceph]
+name=Ceph packages for $basearch
+gpgkey=https://ceph.com/git/?p=ceph.git;a=blob_plain;f=keys/release.asc
+enabled=1
+baseurl=http://ceph.com/rpm-firefly/el6/$basearch
+priority=1
+gpgcheck=1
+type=rpm-md
+
+[ceph-source]
+name=Ceph source packages
+gpgkey=https://ceph.com/git/?p=ceph.git;a=blob_plain;f=keys/release.asc
+enabled=1
+baseurl=http://ceph.com/rpm-firefly/el6/SRPMS
+priority=1
+gpgcheck=1
+type=rpm-md
+
+[Ceph-noarch]
+name=Ceph noarch packages
+gpgkey=https://ceph.com/git/?p=ceph.git;a=blob_plain;f=keys/release.asc
+enabled=1
+baseurl=http://ceph.com/rpm-firefly/el6/noarch
+priority=1
+gpgcheck=1
+type=rpm-md
+
