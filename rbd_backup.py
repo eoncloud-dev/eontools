@@ -134,6 +134,13 @@ def find_most_recent_snap(pool, image):
     snap = lastline.split()[1]
     return snap
 
+def find_local_snaps(pool, image):
+    cmd = "rbd -p %s snap ls %s" % (pool, image)
+    rc, output = execute_cmd(cmd)
+    del output[0]
+    out = map(lambda e:e.split()[1], output)
+    return out
+
 def find_most_recent_remote_image(image):
     cmd = "ssh %s@%s rbd -p %s ls 2>/dev/null| grep %s | grep .image" \
             % (g_user, g_host, g_remote_pool, image)
@@ -353,11 +360,20 @@ def delete_backup_image(pool, image, snapname):
 
     num_snaps_left = num_snaps - len(snaps)
     for s in snaps:
+        # delete remote snap
         tmp_snap = rpool + '/' + target_image + '@' + s
         cmd = "ssh %s@%s rbd snap rm %s 2>/dev/null" % (g_user, g_host, tmp_snap)
         rc, output = execute_cmd(cmd)
         if rc != 0:
             logging.debug("falied to remove snap %s.", (tmp_snap))
+            sys.exit(rc)
+
+        # delete local snap
+        local_snap = pool + '/' + image + '@' + s
+        cmd = "rbd snap rm %s 2>/dev/null" % (local_snap)
+        rc, output = execute_cmd(cmd)
+        if rc != 0:
+            logging.debug("falied to remove snap %s.", (local_snap))
             sys.exit(rc)
 
     if num_snaps_left == 0:
@@ -367,6 +383,18 @@ def delete_backup_image(pool, image, snapname):
             logging.debug("falied to remove image %s.", (target_image))
             sys.exit(rc)
 
+    return rc
+
+def delete_local_snaps(pool, image):
+    rc = 0
+    local_snap_list = find_local_snaps(pool, image)
+    for ls in local_snap_list:
+        local_snap = pool + '/' + image + '@' + ls
+        cmd = "rbd snap rm %s 2>/dev/null" % (local_snap)
+        rc, output = execute_cmd(cmd)
+        if rc != 0:
+            logging.debug("falied to remove snap %s.", (local_snap))
+            sys.exit(rc)
     return rc
 
 def dump_backup_chain(pool, image):
@@ -424,7 +452,7 @@ def du_backup_chain(pool, image):
     return rc
 
 def sanity_check(op, mode, pool, image, snapname):
-    if op not in ["backup", "restore", "delete", "dump", "du"]:
+    if op not in ["backup", "restore", "delete", "dump", "du", "delete_local_snaps"]:
         logging.debug("invalid operation %s, should be [backup|restore|delete|dump|du]", (op))
         sys.exit(1)
 
@@ -517,6 +545,8 @@ if __name__ == '__main__':
         rc = restore_image(pool, image, snapname)
     elif op == "delete":
         rc = delete_backup_image(pool, image, snapname)
+    elif op == "delete_local_snaps":
+        rc = delete_local_snaps(pool, image)
     elif op == "dump":
         rc = dump_backup_chain(pool, image)
     elif op == "du":
