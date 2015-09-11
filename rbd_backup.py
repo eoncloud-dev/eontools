@@ -353,11 +353,20 @@ def delete_backup_image(pool, image, snapname):
 
     num_snaps_left = num_snaps - len(snaps)
     for s in snaps:
+        # delete remote snap
         tmp_snap = rpool + '/' + target_image + '@' + s
         cmd = "ssh %s@%s rbd snap rm %s 2>/dev/null" % (g_user, g_host, tmp_snap)
         rc, output = execute_cmd(cmd)
         if rc != 0:
             logging.debug("falied to remove snap %s.", (tmp_snap))
+            sys.exit(rc)
+
+        # delete local snap
+        local_snap = pool + '/' + image + '@' + s
+        cmd = "rbd snap rm %s 2>/dev/null" % (local_snap)
+        rc, output = execute_cmd(cmd)
+        if rc != 0:
+            logging.debug("falied to remove snap %s.", (local_snap))
             sys.exit(rc)
 
     if num_snaps_left == 0:
