@@ -137,6 +137,9 @@ def find_most_recent_snap(pool, image):
 def find_local_snaps(pool, image):
     cmd = "rbd -p %s snap ls %s" % (pool, image)
     rc, output = execute_cmd(cmd)
+    if len(output) == 0:
+        return []
+
     del output[0]
     out = map(lambda e:e.split()[1], output)
     return out
