@@ -180,6 +180,21 @@ def create_remote_snap_if_not_exit(image, snap):
     rc, output = execute_cmd(cmd)
     return rc
 
+def build_target_image_mode_full(image):
+    target_image = image + '.' + current + postfix_image
+    return target_image
+
+def build_snapname(pool, image, mode):
+    if mode == "full":
+        target_image = build_target_image_mode_full(image)
+    else:
+        target_image = find_most_recent_remote_image(image)
+
+    snap = current + ".snap"
+
+    full_snap = g_remote_pool + '/' + target_image + '@' + snap
+    return full_snap
+
 # For full backup, the ETA should be the time of backup one image plus the
 # time of removing one copy
 # return rc, snapname
@@ -202,7 +217,7 @@ def backup_image(pool, image, mode):
     full_snap = ""
     target_image = ""
     if mode == "full":
-        target_image = image + '.' + current + postfix_image
+        target_image = build_target_image_mode_full(image)
         rc, snap = create_snap(pool, image)
         if rc != 0:
             logging.debug("backup_image: create first snap failed, rc %d.", (rc))
@@ -335,6 +350,36 @@ def restore_image(pool, image, snapname):
 
     return rc
 
+# search "double fork" to discover more
+def asynchronize_exec(async_fun, op, pool, image, mode, snapname):
+    pid = os.fork()
+    if pid == 0:
+        os.setsid()
+        pid = os.fork()
+        if pid == 0:
+            if op == "backup":
+                async_fun(pool, image, mode)
+            else:
+                async_fun(pool, image, snapname)
+        else:
+            sys.exit(0)
+    pass
+
+def backup_image_async(pool, image, mode):
+    rc = 0
+    snapname = build_snapname(pool, image, mode)
+
+    asynchronize_exec(backup_image, "backup", pool, image, mode, None)
+
+    return rc, snapname
+
+def restore_image_async(pool, image, snapname):
+    rc = 0
+
+    asynchronize_exec(restore_image, "restore", pool, image, None, snapname)
+
+    return rc
+
 def delete_backup_image(pool, image, snapname):
     rc = 0
     if not snapname:
@@ -454,7 +499,7 @@ def du_backup_chain(pool, image):
 
     return rc
 
-def sanity_check(op, mode, pool, image, snapname):
+def sanity_check(op, mode, pool, image, snapname, async):
     if op not in ["backup", "restore", "delete", "dump", "du", "delete_local_snaps"]:
         logging.debug("invalid operation %s, should be [backup|restore|delete|dump|du]", (op))
         sys.exit(1)
@@ -479,6 +524,11 @@ def sanity_check(op, mode, pool, image, snapname):
     if g_full_backup_to_keep < 0:
         logging.debug("Invalid parameter for number of full copies to keep.""")
         sys.exit(1)
+
+    if async:
+        if op not in ["backup", "restore"]:
+            logging.debug("Don't support operation %s in async mode.", (op))
+            sys.exit(1)
         
 if __name__ == '__main__':
 
@@ -513,6 +563,9 @@ if __name__ == '__main__':
     parser.add_option("-d", "--destination-host", action="store",
                       dest="remote_host",
                       help="remote host IP, need to access $user@$host w/o password")
+    parser.add_option("-a", "--async", action="store_true",
+                      dest="async",
+                      help="backup/restore/delete in async way")
 
     (options, args) = parser.parse_args() 
 
@@ -522,6 +575,7 @@ if __name__ == '__main__':
     op = options.op
     g_remote_pool = options.remote_pool
     snapname = options.from_snap
+    async = False
 
     if options.remote_user:
         g_user = options.remote_user
@@ -532,20 +586,29 @@ if __name__ == '__main__':
     if options.number_of_copies:
         g_full_backup_to_keep = options.number_of_copies
 
-    sanity_check(op, mode, pool, image, snapname)
+    if options.async:
+        async = True
+
+    sanity_check(op, mode, pool, image, snapname, async)
     logging.debug("%s pool %s image %s mode %s, begin at %s.",
                    *(op, pool, image, mode, current))
 
     if op == "backup":
-        rc, snapname = backup_image(pool, image, mode)
+        if async:
+            rc, snapname = backup_image_async(pool, image, mode)
+        else:
+            rc, snapname = backup_image(pool, image, mode)
         if rc == 0:
             logging.debug("backup image %s as %s in host %s.", *(image,
                 snapname, g_host))
             #logging.info("%s", (snapname))
-	    # THE ONLY OUTPUT TO STDOUT
-	    print snapname
+	        # THE ONLY OUTPUT TO STDOUT
+            print snapname
     elif op == "restore":
-        rc = restore_image(pool, image, snapname)
+        if async:
+            rc = restore_image_async(pool, image, snapname)
+        else:
+            rc = restore_image(pool, image, snapname)
     elif op == "delete":
         rc = delete_backup_image(pool, image, snapname)
     elif op == "delete_local_snaps":
