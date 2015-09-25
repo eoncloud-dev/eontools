@@ -24,6 +24,15 @@ g_remote_pool = ""
 # full backup images to keep, 0 means no limitation.
 g_full_backup_to_keep = 0
 
+# the indication files are put in below directory which must be specified in
+# absolute path format.
+g_async_indication_dir = "/tmp/rbd_async_indication"
+
+# the indication file postfix to indicate its status
+g_async_indication_ongoing = ".ongoing"
+g_async_indication_done = ".done"
+g_async_indication_fail = ".fail"
+
 # date & timestamp
 date = str(datetime.datetime.today().date())
 timestamp = str(datetime.datetime.today().time())
@@ -41,7 +50,7 @@ passive_branch_type = "passive"
 
 # Simple wrapper,
 # For some cases, there is no output for shell command. $? is the only way to
-# tell the excution result. So let succeed or not as last element in return
+# tell the execution result. So let succeed or not as last element in return
 # value.
 def execute_cmd(cmd):
     cmd = cmd + "; echo $?"
@@ -54,9 +63,9 @@ def execute_cmd(cmd):
 
 def cleanup_after_full_backup(image):
     """
-    keep at most g_full_backup_to_keep images that are most up to date.
-    drop the others.
-    also, purge all snapshots as no need to keep them.
+    Keep at most g_full_backup_to_keep images that are most up to date.
+    Drop the others.
+    Also, purge all snapshots as no need to keep them.
     """
     if g_full_backup_to_keep == 0:
         return
@@ -161,6 +170,17 @@ def find_most_recent_remote_image(image):
 def find_most_recent_full_backup(image):
     pass
 
+def find_local_tmp_image(pool, image):
+    cmd = "rbd -p %s ls | grep %s | grep .tmp" % (pool, image)
+    rc, output = execute_cmd(cmd)
+    if rc != 0 or len(output) == 0:
+        logging.debug("No tmp image found.")
+        return ""
+
+    if len(output) > 1:
+        logging.debug("WTF. There should be at most only one ONGOING restore operation.")
+    return output[-1]
+
 def create_snap(pool, image):
     snap = current + ".snap" 
     cmd = "rbd -p %s snap create --snap %s %s" % (pool, snap, image)
@@ -195,6 +215,108 @@ def build_snapname(pool, image, mode):
     full_snap = g_remote_pool + '/' + target_image + '@' + snap
     return full_snap
 
+def mk_indication_dir_if_not_exist():
+    if os.path.exists(g_async_indication_dir) == False:
+        os.mkdir(g_async_indication_dir)
+    elif os.path.isdir(g_async_indication_dir) == False:
+        logging.debug("g_async_indication_dir exists but is not a directory.")
+        sys.exit(-1)
+    else:
+        pass
+
+    # check again to make sure the g_async_indication_dir is one directory
+    if os.path.isdir(g_async_indication_dir):
+        pass
+    else:
+        logging.debug("g_async_indication_dir exists but is not a directory.")
+        sys.exit(-1)
+
+def touchfile(path):
+    with open(path, 'a'):
+        os.utime(path, None)
+    #TODO ensure file exist, may not necessary???
+
+def trim_slash_in_snapname(tfn):
+    def _trim_slash(snapname):
+        snap = snapname.replace("/","-")
+        return tfn(snap)
+        pass
+    return _trim_slash
+
+@trim_slash_in_snapname
+def touch_ongoing_file(snapname):
+    mk_indication_dir_if_not_exist()
+    ongoing_file = g_async_indication_dir + '/' + snapname + g_async_indication_ongoing
+    touchfile(ongoing_file)
+
+@trim_slash_in_snapname
+def touch_done_file(snapname):
+    mk_indication_dir_if_not_exist()
+    done_file = g_async_indication_dir + '/' + snapname + g_async_indication_done
+    touchfile(done_file)
+
+@trim_slash_in_snapname
+def touch_fail_file(snapname):
+    mk_indication_dir_if_not_exist()
+    fail_file = g_async_indication_dir + '/' + snapname + g_async_indication_fail
+    touchfile(fail)
+
+def is_file_exist(path):
+    try:
+        statinfo = os.stat(path)
+        return True
+    except OSError:
+        return False
+
+@trim_slash_in_snapname
+def is_done(snapname):
+    done_file = g_async_indication_dir + '/' + snapname + g_async_indication_done
+    return is_file_exist(done_file)
+
+    # Why below code doesn't work???
+    if os.path.exists(done_file):
+        return True
+    else:
+        return False
+
+@trim_slash_in_snapname
+def is_failed(snapname):
+    fail_file = g_async_indication_dir + '/' + snapname + g_async_indication_fail
+    return is_file_exist(fail_file)
+
+    if os.path.exists(fail_file):
+        return True
+    else:
+        return False
+
+@trim_slash_in_snapname
+def is_async_running(snapname):
+    ongoing_file = g_async_indication_dir + '/' + snapname + g_async_indication_ongoing
+    return is_file_exist(ongoing_file)
+
+@trim_slash_in_snapname
+def cleanup_indication_file(snapname):
+    ongoing_file = g_async_indication_dir + '/' + snapname + g_async_indication_ongoing
+    done_file = g_async_indication_dir + '/' + snapname + g_async_indication_done
+    fail_file = g_async_indication_dir + '/' + snapname + g_async_indication_fail
+
+    # May fail as EONENT, ignore it.
+    try:
+        os.remove(ongoing_file)
+    except OSError:
+        pass
+
+    try:
+        os.remove(done_file)
+    except OSError:
+        pass
+
+    try:
+        os.remove(fail_file)
+    except OSError:
+        pass
+
+
 # For full backup, the ETA should be the time of backup one image plus the
 # time of removing one copy
 # return rc, snapname
@@ -211,7 +333,7 @@ def backup_image(pool, image, mode):
     if first_bkp and mode != "full":
         logging.debug("backup_image: must do full backup for the first time.")
         #TODO change mode to "full"???
-        sys.exit(1)
+        return -1, ""
 
     snap = ""
     full_snap = ""
@@ -221,7 +343,7 @@ def backup_image(pool, image, mode):
         rc, snap = create_snap(pool, image)
         if rc != 0:
             logging.debug("backup_image: create first snap failed, rc %d.", (rc))
-            sys.exit(rc)
+            return -1, ""
         # example:
         # rbd -p rbd export bkp_test_1 - | ssh root@node-7 rbd import -
         # bkp_test_1 -p rbd-bkp
@@ -232,18 +354,18 @@ def backup_image(pool, image, mode):
         logging.debug("backup_image: rc %d.", (rc))
         if rc != 0:
             logging.debug("backup_image: failed, rc %d.", (rc))
-            sys.exit(rc)
+            return -1, ""
 
         rc, snap = create_remote_snap(target_image)
         if rc != 0:
             logging.debug("backup_image, failed to create snap.")
-            sys.exit(rc)
+            return -1, ""
     elif mode == "incr":
         last_snap = find_most_recent_snap(pool, image)
         rc, snap = create_snap(pool, image)
         if rc != 0:
             logging.debug("backup_image, failed to create snap.")
-            sys.exit(rc)
+            return -1, ""
 
         target_image = find_most_recent_remote_image(image)
         cmd = "rbd export-diff --from-snap %s %s/%s@%s - 2>/dev/null| ssh %s@%s rbd import-diff - %s/%s 2>/dev/null" \
@@ -252,13 +374,13 @@ def backup_image(pool, image, mode):
         logging.debug("backup_image: rc %d.", (rc))
         if rc != 0:
             logging.debug("backup_image: failed, rc %d.", (rc))
-            sys.exit(rc)
+            return -1, ""
     elif mode == "delta":
         logging.debug("backup_image, delta mode is not supported yet.")
-        sys.exit(38)
+        return -1, ""
     else:
         logging.debug("backup_image: Unknown backup mode %s", (mode))
-        sys.exit(1)
+        return -1, ""
 
     logging.debug("backup_image: pool %s, image %s, mode %s.",
                     *(pool, image, mode))
@@ -352,15 +474,22 @@ def restore_image(pool, image, snapname):
 
 # search "double fork" to discover more
 def asynchronize_exec(async_fun, op, pool, image, mode, snapname):
+    rc = 0
+    tmp = ""
     pid = os.fork()
     if pid == 0:
         os.setsid()
         pid = os.fork()
         if pid == 0:
             if op == "backup":
-                async_fun(pool, image, mode)
+                rc, tmp = async_fun(pool, image, mode)
             else:
-                async_fun(pool, image, snapname)
+                rc = async_fun(pool, image, snapname)
+
+            if rc != 0:
+                touch_fail_file(snapname)
+            else:
+                touch_done_file(snapname)
         else:
             sys.exit(0)
     pass
@@ -369,13 +498,15 @@ def backup_image_async(pool, image, mode):
     rc = 0
     snapname = build_snapname(pool, image, mode)
 
-    asynchronize_exec(backup_image, "backup", pool, image, mode, None)
+    touch_ongoing_file(snapname)
+    asynchronize_exec(backup_image, "backup", pool, image, mode, snapname)
 
     return rc, snapname
 
 def restore_image_async(pool, image, snapname):
     rc = 0
 
+    touch_ongoing_file(snapname)
     asynchronize_exec(restore_image, "restore", pool, image, None, snapname)
 
     return rc
@@ -499,8 +630,167 @@ def du_backup_chain(pool, image):
 
     return rc
 
+def split_snapname(snapname):
+    # snapname example:
+    # rbd2/zhangzh.2015-09-24.10:04:40.298789.bkp.image@2015-09-24.10:04:40.298789.snap
+
+    p = snapname.split('/')[0]
+    i = snapname.split('/')[1]
+    i = i.split('@')[0]
+    return p, i
+
+def find_rbd_prefix_from_info(output):
+    prefix = ""
+    for o in output:
+        s = o.split(':')
+        if "block_name_prefix" in s[0]:
+            prefix = s[1]
+            break
+
+    return prefix
+
+def find_rbd_parent_from_info(output):
+    parent = ""
+    for o in output:
+        s = o.split(':')
+        if "parent" in s[0]:
+            parent = s[1]
+            break
+
+    return parent
+
+# when querying number of objects for one image, don't forget it might be
+# created by cloning one parent image.
+def num_objs_of_local_image(pool, image):
+    cmd = "rbd -p %s info %s" % (pool, image)
+    rc, output = execute_cmd(cmd)
+    if rc != 0:
+        logging.debug("No image %s in pool %s, number of objects is 0.", *(image, pool))
+        return 0
+
+    pn = 0
+    parent = find_rbd_parent_from_info(output)
+    if parent != "":
+        # parent example:
+        # parent: images/ff3447ab-607e-4095-a426-3ed64d571ce0@snap
+        p, i = split_snapname(parent)
+        pn = num_objs_of_local_image(p, i)
+
+    prefix = find_rbd_prefix_from_info(output)
+    if prefix == "":
+        logging.debug("failed to find rbd data prefix for image in pool.", *(i, p))
+        sys.exit(2)
+    cmd = "rados -p %s ls | grep %s | wc -l" % (pool, prefix)
+    rc, output = execute_cmd(cmd)
+    if rc != 0:
+        logging.debug("failed to lookup objects for image.")
+        sys.exit(rc)
+    l = int(output[0])
+
+    return pn + l
+
+def num_objs_of_remote_image(snapname):
+    # snapname example:
+    # rbd2/zhangzh.2015-09-24.10:04:40.298789.bkp.image@2015-09-24.10:04:40.298789.snap
+    p, i = split_snapname(snapname)
+
+    prefix = ""
+    cmd = "ssh %s@%s rbd -p %s info %s 2>/dev/null" % (g_user, g_host, p, i)
+    rc, output = execute_cmd(cmd)
+    if rc != 0:
+        logging.debug("failed to find remote image %s in pool %s.", *(i, p))
+        sys.exit(rc)
+
+    prefix = find_rbd_prefix_from_info(output)
+    if prefix == "":
+        logging.debug("failed to find rbd data prefix for image in pool.", *(i, p))
+        sys.exit(2)
+
+    cmd = "ssh %s@%s \"rados -p %s ls  | grep %s | wc -l\" 2>/dev/null" \
+            % (g_user, g_host, p, prefix)
+    rc, output = execute_cmd(cmd)
+    if rc != 0:
+        logging.debug("find_most_recent_remote_image failed.")
+        sys.exit(rc)
+
+    l = int(output[0])
+    return l
+
+# Note: there is no progress exposed by RBD functionality(the stdout output in
+# sync mode doesn't count as we need one API to query where we are now.). So we
+# have to simulate it. The basic idea is Ceph will split the giant RBD image
+# into many small objects with default size of 4MB. And we can count the number
+# of objects for each image. Suppose those objects are evenly distributed(it
+# should be), the percentage should be easily calculated by r/l in following
+# function. For one real word image, the result should be pretty accurate. But
+# for images that are just created, which means it's almost empty, the result
+# might be misleading. Well, in fact, user shouldn't backup those empty images as
+# it contains no data. So let's leave it for now.
+def query_snap_progress(op, pool, image, snapname):
+    """
+    It will return one percentage number between [0, 100] to indicate where the
+    backup/restore progress are.
+    Return value of 100 means the operation has done successfully.
+    Return value of -1 means the operation failed for somehow.
+    Return value of -2 means the operation is unsupported for query_snap_progress.
+    """
+    # quick path, check failed/done indication first. If so, no need for following calculation.
+    if is_async_running(snapname) == False:
+        return -1
+    if is_failed(snapname):
+        cleanup_indication_file(snapname)
+        return -1
+    if is_done(snapname):
+        cleanup_indication_file(snapname)
+        return 100
+
+    if op == "restore":
+        tmpimage = find_local_tmp_image(pool, image)
+        l = num_objs_of_local_image(pool, tmpimage)
+    else:
+        l = num_objs_of_local_image(pool, image)
+    r = num_objs_of_remote_image(snapname)
+    if op == "backup":
+        if l == 0:
+            logging.debug("WTF. Backuping one empty image.")
+            p = 0
+        else:
+            p = float(r)/float(l)
+    elif op == "restore":
+        if r == 0:
+            logging.debug("WTF. Restoring from empty image.")
+            p = 0
+        else:
+            p = float(l)/float(r)
+    else:
+        # we shouldn't be here as all requests have been sanity checked.
+        logging.debug("Unsupported operation for query_snap_progress.")
+        return -2
+
+    p = int(p*100)
+    if p >= 100:
+        if p > 100:
+            # Shouldn't be here. But if it happens, the only thing we can count
+            # on is waiting done or fail flag in this or next queries.
+            p = 100
+            logging.debug("WTF. Copying more objects than expected!!!")
+
+        if is_done(snapname):
+            cleanup_indication_file(snapname)
+        else:
+            # almost done, hang in there.
+            #
+            # Just in case of the last object is created, but fail finally.
+            # We need to maintain a consistent view with upper layer callers.
+            # Or we may leave one corrupted image on remote side which is
+            # definitely not wanted.
+            p = 99
+
+    # TODO might output current MB/s, ETA too, those can be calculated.
+    return p
+
 def sanity_check(op, mode, pool, image, snapname, async):
-    if op not in ["backup", "restore", "delete", "dump", "du", "delete_local_snaps"]:
+    if op not in ["backup", "restore", "delete", "dump", "du", "delete_local_snaps", "query_backup", "query_restore"]:
         logging.debug("invalid operation %s, should be [backup|restore|delete|dump|du]", (op))
         sys.exit(1)
 
@@ -617,6 +907,12 @@ if __name__ == '__main__':
         rc = dump_backup_chain(pool, image)
     elif op == "du":
         rc = du_backup_chain(pool, image)
+    elif op == "query_backup":
+        rc = query_snap_progress("backup", pool, image, snapname)
+        print rc
+    elif op == "query_restore":
+        rc = query_snap_progress("restore", pool, image, snapname)
+        print rc
     else:
         logging.debug("Invalid operation.")
         sys.exit(1)
