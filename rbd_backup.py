@@ -10,6 +10,11 @@ from optparse import OptionParser
 # TODO
 # . clone format
 # . delta mode is not supported.
+# . Save backup history to DB for future lookup, like history list, success
+#   rate.
+# . Cluster mode? Have a pool of backup/restore initiators thus avoiding single
+#   point issue.
+# . task cancelling to support user stop one ongoing work.
 
 # Do complete backup every N days
 g_restart_every_n_days = 7
