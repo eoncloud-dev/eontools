@@ -295,7 +295,7 @@ def is_failed(snapname):
         return False
 
 @trim_slash_in_snapname
-def is_async_running(snapname):
+def is_onging(snapname):
     ongoing_file = g_async_indication_dir + '/' + snapname + g_async_indication_ongoing
     return is_file_exist(ongoing_file)
 
@@ -740,7 +740,7 @@ def query_snap_progress(op, pool, image, snapname):
     Return value of -2 means the operation is unsupported for query_snap_progress.
     """
     # quick path, check failed/done indication first. If so, no need for following calculation.
-    if is_async_running(snapname) == False:
+    if is_ongoing(snapname) == False:
         return -1
     if is_failed(snapname):
         cleanup_indication_file(snapname)
