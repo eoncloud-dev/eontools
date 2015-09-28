@@ -295,7 +295,7 @@ def is_failed(snapname):
         return False
 
 @trim_slash_in_snapname
-def is_onging(snapname):
+def is_ongoing(snapname):
     ongoing_file = g_async_indication_dir + '/' + snapname + g_async_indication_ongoing
     return is_file_exist(ongoing_file)
 
