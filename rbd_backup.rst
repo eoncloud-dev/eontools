@@ -11,7 +11,8 @@ Note:
 5. The du command will return disk usage in MBs.
 6. More options see "python rbd_backup.py -h".
 
-Backup:
+Backup::
+
 [root@node-6 ~]# python rbd_backup.py -p rbd -i tmpimage -r rbd2 -u root -d node-7 -o backup -m full
 rbd2/tmpimage.2015-07-07.10:40:39.458883.bkp.image@2015-07-07.10:40:39.458883.snap
 [root@node-6 ~]# python rbd_backup.py -p rbd -i tmpimage -r rbd2 -u root -d node-7 -o backup -m incr
@@ -19,7 +20,9 @@ rbd2/tmpimage.2015-07-07.10:40:39.458883.bkp.image@2015-07-07.10:40:43.707889.sn
 [root@node-6 ~]# echo $?
 0
 
-Restore:
+
+Restore::
+
 # remove the source image just for testing.
 [root@node-6 ~]# rbd -p rbd snap purge tmpimage
 Removing all snapshots: 100% complete...done.
@@ -39,12 +42,16 @@ rbd image 'tmpimage':
         block_name_prefix: rb.0.cea1.238e1f29
         format: 1
 
-Delete:
+
+Delete::
+
 [root@node-6 ~]# python rbd_backup.py -p rbd -i tmpimage -r rbd2 -u root -d node-7 -o delete -s rbd2/tmpimage.2015-07-07.10:51:27.252510.bkp.image@2015-07-07.10:51:33.461753.snap
 [root@node-6 ~]# echo $?
 0
 
-Backup Chain: ONLY USED IN DEBUG MODE
+
+Backup Chain, ONLY USED IN DEBUG MODE ::
+
 [root@node-6 ~]# python rbd_backup.py -p rbd -i tmpimage -r rbd2 -u root -d node-7 -o dump                                                                                        
 2015-07-07 10:53:09,984 rbd_backup.py[line:503] DEBUG - dump pool rbd image tmpimage mode None, begin at 2015-07-07.10:53:09.983320.
 2015-07-07 10:53:10,083 rbd_backup.py[line:384] DEBUG - === tmpimage.2015-07-07.10:40:39.458883.bkp.image === passive
@@ -58,14 +65,19 @@ Backup Chain: ONLY USED IN DEBUG MODE
 2015-07-07 10:53:10,488 rbd_backup.py[line:392] DEBUG - ------     43 2015-07-07.10:51:27.252510.snap 4096 kB 
 2015-07-07 10:53:10,489 rbd_backup.py[line:529] DEBUG - dump pool rbd image tmpimage mode None, rc 0, end at 2015-07-07.10:53:10.489367.
 
-Disk usage: The disk usage is returned in MBs
+
+Disk usage. The disk usage is returned in MBs. ::
+
 [root@node-6 ~]# python rbd_backup.py -p rbd -i tmpimage -r rbd2 -u root -d node-7 -o du
 13
 
-Async mode support:
+
+Async mode support.
 This tool supports async backup/restore now. Similar with sync mode, user
 can add '-a' option to make it asynchronous. Besides, user can query backup
 and restore progress by "query_backup" and "query_restore" command.
+::
+
 [root@node-6 ~]# python eontools/rbd_backup.py -p compute -i e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk -o backup -m full -r rbd -u root -d node-6 -a
 rbd/e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk.2015-09-28.03:56:27.000863.bkp.image@2015-09-28.03:56:27.000863.snap
 [root@node-6 ~]# python eontools/rbd_backup.py -p compute -i e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk -o query_backup -r rbd -u root -d node-6 -s rbd/e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk.2015-09-28.03:56:27.000863.bkp.image@2015-09-28.03:56:27.000863.snap
@@ -75,7 +87,9 @@ rbd/e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk.2015-09-28.03:56:27.000863.bkp.ima
 [root@node-6 ~]# python eontools/rbd_backup.py -p compute -i e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk -o query_backup -r rbd -u root -d node-6 -s rbd/e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk.2015-09-28.03:56:27.000863.bkp.image@2015-09-28.03:56:27.000863.snap
 100
 
-#restore
+
+#restore::
+
 [root@node-6 ~]# python eontools/rbd_backup.py -p compute -i e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk -o restore -r rbd -u root -d node-6 -s rbd/e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk.2015-09-28.03:56:27.000863.bkp.image@2015-09-28.03:56:27.000863.snap -a
 [root@node-6 ~]# python eontools/rbd_backup.py -p compute -i e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk -o query_restore -u root -d node-6 -s rbd/e1287976-e9bf-4417-af76-b85fe8ae4a1c_disk.2015-09-28.03:56:27.000863.bkp.image@2015-09-28.03:56:27.000863.snap
 99
