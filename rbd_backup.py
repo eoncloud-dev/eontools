@@ -158,6 +158,16 @@ def find_local_snaps(pool, image):
     out = map(lambda e:e.split()[1], output)
     return out
 
+def find_remote_snaps(pool, image):
+    cmd = "ssh %s@%s rbd -p %s snap ls %s 2>/dev/null" % (g_user, g_host, pool, image)
+    rc, output = execute_cmd(cmd)
+    if len(output) == 0:
+        return []
+
+    del output[0]
+    out = map(lambda e:e.split()[1], output)
+    return out
+
 def find_most_recent_remote_image(image):
     cmd = "ssh %s@%s rbd -p %s ls 2>/dev/null| grep %s | grep .image" \
             % (g_user, g_host, g_remote_pool, image)
@@ -635,6 +645,41 @@ def du_backup_chain(pool, image):
 
     return rc
 
+def du_snap(pool, image, snapname):
+    rp, ri, rs = split_snapname_v2(snapname)
+
+    remote_snap_list = find_remote_snaps(rp, ri)
+    if rs not in remote_snap_list:
+        logging.debug("Can't find snap %s in remote %s/%s.", *(rs, rp, ri))
+        sys.exit(1)
+
+    parent = ""
+    for tmp in remote_snap_list:
+        if tmp == rs:
+            break
+        parent = tmp
+
+    if parent == "":
+        # i am the first
+        cmd = "ssh %s@%s rbd diff %s/%s 2>/dev/null | awk '{SUM += $2} END {print SUM/1024/1024}'" \
+                % (g_user, g_host, rp, ri)
+    else:
+        # i have a parent
+        #from_snap = rp + '/' + ri + '@' + parent
+        cmd = "ssh %s@%s rbd diff -p %s -i %s --snap %s --from-snap %s 2>/dev/null|awk '{SUM += $2} END {print SUM/1024/1024}'" \
+                % (g_user, g_host, rp, ri, rs, parent)
+
+    logging.debug("cmd is %s.", (cmd))
+    rc, output = execute_cmd(cmd)
+    bytes = 0
+    if len(output) == 1:
+        logging.debug("output is %s.", (output[0]))
+        bytes_str = output[0]
+        bytes = int(bytes_str.split('.')[0])
+
+    print bytes
+    return 0
+
 def split_snapname(snapname):
     # snapname example:
     # rbd2/zhangzh.2015-09-24.10:04:40.298789.bkp.image@2015-09-24.10:04:40.298789.snap
@@ -643,6 +688,13 @@ def split_snapname(snapname):
     i = snapname.split('/')[1]
     i = i.split('@')[0]
     return p, i
+
+def split_snapname_v2(snapname):
+    p = snapname.split('/')[0]
+    tmpi = snapname.split('/')[1]
+    i = tmpi.split('@')[0]
+    s = tmpi.split('@')[1]
+    return p, i, s
 
 def find_rbd_prefix_from_info(output):
     prefix = ""
@@ -795,7 +847,7 @@ def query_snap_progress(op, pool, image, snapname):
     return p
 
 def sanity_check(op, mode, pool, image, snapname, async):
-    if op not in ["backup", "restore", "delete", "dump", "du", "delete_local_snaps", "query_backup", "query_restore"]:
+    if op not in ["backup", "restore", "delete", "dump", "du", "du_snap", "delete_local_snaps", "query_backup", "query_restore"]:
         logging.debug("invalid operation %s, should be [backup|restore|delete|dump|du]", (op))
         sys.exit(1)
 
@@ -912,6 +964,8 @@ if __name__ == '__main__':
         rc = dump_backup_chain(pool, image)
     elif op == "du":
         rc = du_backup_chain(pool, image)
+    elif op == "du_snap":
+        rc = du_snap(pool, image, snapname)
     elif op == "query_backup":
         rc = query_snap_progress("backup", pool, image, snapname)
         print rc

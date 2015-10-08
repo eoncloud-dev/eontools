@@ -71,6 +71,24 @@ Disk usage. The disk usage is returned in MBs. ::
    13
 
 
+Disk usage for one single backup operation. ::
+
+   [root@node-6 ~]# rbd create zhangzh_tmp --size 10240
+   [root@node-6 ~]# python eontools/rbd_backup.py -p rbd -i zhangzh_tmp -o backup -m full -r rbd2 -u root -d node-6
+   rbd2/zhangzh_tmp.2015-10-08.09:52:36.239466.bkp.image@2015-10-08.09:52:36.239466.snap
+   [root@node-6 ~]# python eontools/rbd_backup.py -p rbd -i zhangzh_tmp -o du_snap -s rbd2/zhangzh_tmp.2015-10-08.09:52:36.239466.bkp.image@2015-10-08.09:52:36.239466.snap -u root -d node-6
+   0
+   [root@node-6 ~]# python eontools/rbd_backup.py -p rbd -i zhangzh_tmp -o backup -m incr -r rbd2 -u root -d node-6                                                                         rbd2/zhangzh_tmp.2015-10-08.09:52:36.239466.bkp.image@2015-10-08.09:55:01.620737.snap
+   [root@node-6 ~]# python eontools/rbd_backup.py -p rbd -i zhangzh_tmp -o du_snap -s rbd2/zhangzh_tmp.2015-10-08.09:52:36.239466.bkp.image@2015-10-08.09:55:01.620737.snap -u root -d node-6
+   2868
+   [root@node-6 ~]# python eontools/rbd_backup.py -p rbd -i zhangzh_tmp -o backup -m incr -r rbd2 -u root -d node-6                                                                         rbd2/zhangzh_tmp.2015-10-08.09:52:36.239466.bkp.image@2015-10-08.09:57:14.898665.snap
+   [root@node-6 ~]# python eontools/rbd_backup.py -p rbd -i zhangzh_tmp -o du_snap -s rbd2/zhangzh_tmp.2015-10-08.09:52:36.239466.bkp.image@2015-10-08.09:57:14.898665.snap -u root -d node-6
+   5692
+   [root@node-6 ~]# python eontools/rbd_backup.py -p rbd -i zhangzh_tmp -o backup -m incr -r rbd2 -u root -d node-6                                                                         rbd2/zhangzh_tmp.2015-10-08.09:52:36.239466.bkp.image@2015-10-08.10:01:11.375287.snap
+   [root@node-6 ~]# python eontools/rbd_backup.py -p rbd -i zhangzh_tmp -o du_snap -s rbd2/zhangzh_tmp.2015-10-08.09:52:36.239466.bkp.image@2015-10-08.10:01:11.375287.snap -u root -d node-6
+   10240
+
+
 Async mode support.
 This tool supports async backup/restore now. Similar with sync mode, user
 can add '-a' option to make it asynchronous. Besides, user can query backup
