@@ -23,6 +23,9 @@ g_restart_every_n_days = 7
 g_host = "node-11"
 g_user = "root"
 
+# log file
+g_log = "/tmp/rbd_backup.log"
+
 # remote pool to backup
 g_remote_pool = ""
 
@@ -880,7 +883,7 @@ def sanity_check(op, mode, pool, image, snapname, async):
 if __name__ == '__main__':
 
     logging.basicConfig(format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s - %(message)s',
-                        level=logging.INFO)
+                        filename=g_log, level=logging.DEBUG)
 
     parser = OptionParser() 
     parser.add_option("-p", "--pool", action="store", 
