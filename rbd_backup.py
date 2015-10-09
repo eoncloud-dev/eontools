@@ -277,7 +277,7 @@ def touch_done_file(snapname):
 def touch_fail_file(snapname):
     mk_indication_dir_if_not_exist()
     fail_file = g_async_indication_dir + '/' + snapname + g_async_indication_fail
-    touchfile(fail)
+    touchfile(fail_file)
 
 def is_file_exist(path):
     try:
