@@ -452,7 +452,7 @@ def restore_image(pool, image, snapname):
     logging.debug("restore_image: import %s from %s as image %s in pool %s, rc %d",
                    *(snapname, g_host, tmp_image, pool, rc))
     if rc != 0:
-        sys.exit(rc)
+        return -1
 
     cmd = "rbd -p %s snap purge %s >/dev/null 2>&1; rbd -p %s rm %s >/dev/null 2>&1" \
             % (pool, image, pool, image)
@@ -466,7 +466,7 @@ def restore_image(pool, image, snapname):
                     *(tmp_image, image, rc))
     if rc != 0:
         logging.debug("failed to rename %s to %s.", *(tmp_image, image))
-        sys.exit(rc)
+        return -1
 
     """
     # After restore, we need to create one more full backup image on remote to
