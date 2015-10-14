@@ -6,6 +6,7 @@ from signal import signal, SIGINT, SIG_IGN, siginterrupt
 import logging
 import datetime
 from optparse import OptionParser
+import pickle
 
 # TODO
 # . clone format
@@ -312,6 +313,25 @@ def is_ongoing(snapname):
     ongoing_file = g_async_indication_dir + '/' + snapname + g_async_indication_ongoing
     return is_file_exist(ongoing_file)
 
+# may stash more meta into ongoing file in future.
+@trim_slash_in_snapname
+def set_meta_ongoing_file(snapname):
+    ongoing_file = g_async_indication_dir + '/' + snapname + g_async_indication_ongoing
+    pid = os.getpid()
+    meta = {'pid': pid} # the only attr now
+    with open(ongoing_file, 'wb') as f:
+        pickle.dump(meta, f)
+
+@trim_slash_in_snapname
+def get_meta_ongoing_file(snapname):
+    pid = -1
+    ongoing_file = g_async_indication_dir + '/' + snapname + g_async_indication_ongoing
+    with open(ongoing_file, 'rb') as f:
+        meta = pickle.load(f)
+        pid = meta['pid']
+
+    return pid
+
 @trim_slash_in_snapname
 def cleanup_indication_file(snapname):
     ongoing_file = g_async_indication_dir + '/' + snapname + g_async_indication_ongoing
@@ -499,6 +519,7 @@ def asynchronize_exec(async_fun, op, pool, image, mode, snapname):
         os.setsid()
         pid = os.fork()
         if pid == 0:
+            #set_meta_ongoing_file(snapname)
             if op == "backup":
                 rc, tmp = async_fun(pool, image, mode)
             else:
@@ -683,6 +704,85 @@ def du_snap(pool, image, snapname):
     print bytes
     return 0
 
+def kill_pid(pid):
+    rc = 0
+    try:
+        #os.kill(pid, signal.SIGTERM)
+        os.kill(pid, 9)
+        logging.debug("kill pid %d succeed.", (pid))
+    except OSError:
+        logging.debug("kill pid %d failed.", (pid))
+        rc = -1
+
+    return rc
+
+def kill_pid_by_shell(snap):
+    rc = 0
+    cmd = "ps aux | grep %s | grep -v cancel" % (snap)
+    rc, output = execute_cmd(cmd)
+    pids = []
+    if len(output) != 0:
+        pids = map(lambda e:e.split()[1], output)
+
+    for p in pids:
+        cmd = "kill -9 %s" % (p)
+        rc, output = execute_cmd(cmd)
+        if rc != 0:
+            logging.debug("failed to exec %s", (cmd))
+            return -1
+
+    return rc
+
+# ignore rc as may fail to kill the process because it may completed(or failed) already.
+def kill_pid_by_shell_remote(snap):
+    cmd = "ssh %s@%s \"ps aux | grep %s | grep -v cancel \" 2>/dev/null" % (g_user, g_host, snap)
+    rc, output = execute_cmd(cmd)
+    pids = []
+    if len(output) != 0:
+        pids = map(lambda e:e.split()[1], output)
+
+    for p in pids:
+        cmd = "ssh %s@%s kill -9 %s" % (g_user, g_host, p)
+        rc, output = execute_cmd(cmd)
+
+def cancel_snap(pool, image, snapname):
+    """
+    pid = get_meta_ongoing_file(snapname)
+    if pid == -1:
+        logging.debug("failed to get correct pid for %s.", (snapname))
+        return pid
+    """
+    logging.debug("begin to cancel_snap %s.", (snapname))
+    # clean up local/remote processes
+    p, i, s = split_snapname_v2(snapname)
+    kill_pid_by_shell(s)
+    kill_pid_by_shell_remote(s)
+
+    # cleanup local/rempte snapshot
+    cmd = "rbd -p %s snap rm --snap %s %s" % (pool, s, image)
+    rc, output = execute_cmd(cmd)
+    if rc != 0:
+        logging.debug("failed to exec %s", (cmd))
+        return -1
+
+    cmd = "ssh %s@%s rbd -p %s snap rm --snap %s %s" % (g_user, g_host, p, s, i)
+    if rc != 0:
+        logging.debug("failed to exec %s", (cmd))
+        return -1
+    cmd = "ssh %s@%s rbd -p %s rm %s 2>/dev/null" % (g_user, g_host, p, i)
+    rc, output = execute_cmd(cmd)
+    #ignore rc, the command may succeed or may. If it succeed, it means we just
+    # removed the only snapshot the image has, which means it's the first full
+    # backup the user made and then got cancelled. This image is usless.
+    # If it failes, it means we are removeing one incremental snapshots and we
+    # can't remove the whole image.
+
+    # cleanup indication files
+    cleanup_indication_file(snapname)
+
+    logging.debug("cancel_snap %s succeed.", (snapname))
+    return 0
+
 def split_snapname(snapname):
     # snapname example:
     # rbd2/zhangzh.2015-09-24.10:04:40.298789.bkp.image@2015-09-24.10:04:40.298789.snap
@@ -850,7 +950,8 @@ def query_snap_progress(op, pool, image, snapname):
     return p
 
 def sanity_check(op, mode, pool, image, snapname, async):
-    if op not in ["backup", "restore", "delete", "dump", "du", "du_snap", "delete_local_snaps", "query_backup", "query_restore"]:
+    if op not in ["backup", "restore", "delete", "dump", "du", "du_snap",
+            "delete_local_snaps", "query_backup", "query_restore", "cancel"]:
         logging.debug("invalid operation %s, should be [backup|restore|delete|dump|du]", (op))
         sys.exit(1)
 
@@ -975,6 +1076,8 @@ if __name__ == '__main__':
     elif op == "query_restore":
         rc = query_snap_progress("restore", pool, image, snapname)
         print rc
+    elif op == "cancel":
+        rc = cancel_snap(pool, image, snapname)
     else:
         logging.debug("Invalid operation.")
         sys.exit(1)
