@@ -83,7 +83,7 @@ def cleanup_after_full_backup(image):
             % (g_user, g_host, g_remote_pool, image)
     rc, output = execute_cmd(cmd)
     if rc != 0:
-        sys.exit(rc)
+        logging.debug("cmd %s return %d.", (cmd, rc))
 
     if len(output) > g_full_backup_to_keep:
         num_to_rm = len(output) - g_full_backup_to_keep
@@ -234,12 +234,12 @@ def build_snapname(pool, image, mode):
     full_snap = g_remote_pool + '/' + target_image + '@' + snap
     return full_snap
 
+# TODO only logging if error happens, should report to up layer.
 def mk_indication_dir_if_not_exist():
     if os.path.exists(g_async_indication_dir) == False:
         os.mkdir(g_async_indication_dir)
     elif os.path.isdir(g_async_indication_dir) == False:
         logging.debug("g_async_indication_dir exists but is not a directory.")
-        sys.exit(-1)
     else:
         pass
 
@@ -248,7 +248,6 @@ def mk_indication_dir_if_not_exist():
         pass
     else:
         logging.debug("g_async_indication_dir exists but is not a directory.")
-        sys.exit(-1)
 
 def touchfile(path):
     with open(path, 'a'):
@@ -566,7 +565,7 @@ def delete_backup_image(pool, image, snapname):
     rc, output = execute_cmd(cmd)
     if rc != 0:
         logging.debug("failed to list snapshots for image %s.", (target_image))
-        sys.exit(rc)
+        return -1
 
     del output[0]
     snaps = []
@@ -584,7 +583,7 @@ def delete_backup_image(pool, image, snapname):
         rc, output = execute_cmd(cmd)
         if rc != 0:
             logging.debug("falied to remove snap %s.", (tmp_snap))
-            sys.exit(rc)
+            return -1
 
         # delete local snap
         local_snap = pool + '/' + image + '@' + s
@@ -592,14 +591,14 @@ def delete_backup_image(pool, image, snapname):
         rc, output = execute_cmd(cmd)
         if rc != 0:
             logging.debug("falied to remove snap %s.", (local_snap))
-            sys.exit(rc)
+            return -1
 
     if num_snaps_left == 0:
         cmd = "ssh %s@%s rbd -p %s rm %s 2>/dev/null" % (g_user, g_host, rpool, target_image)
         rc, output = execute_cmd(cmd)
         if rc != 0:
             logging.debug("falied to remove image %s.", (target_image))
-            sys.exit(rc)
+            return -1
 
     return rc
 
@@ -612,7 +611,7 @@ def delete_local_snaps(pool, image):
         rc, output = execute_cmd(cmd)
         if rc != 0:
             logging.debug("falied to remove snap %s.", (local_snap))
-            sys.exit(rc)
+            return -1
     return rc
 
 def dump_backup_chain(pool, image):
@@ -621,7 +620,7 @@ def dump_backup_chain(pool, image):
     rc, output = execute_cmd(cmd)
     if rc != 0:
         logging.debug("failed to find backup images for %s.", (image))
-        sys.exit(rc)
+        return -1
 
     bkp_images = output
     for i in bkp_images:
@@ -648,7 +647,7 @@ def du_backup_chain(pool, image):
     rc, output = execute_cmd(cmd)
     if rc != 0:
         logging.debug("failed to find backup images for %s.", (image))
-        sys.exit(rc)
+        return -1
 
     bkp_images = output
     total_bytes = 0 # in MBs
@@ -675,7 +674,7 @@ def du_snap(pool, image, snapname):
     remote_snap_list = find_remote_snaps(rp, ri)
     if rs not in remote_snap_list:
         logging.debug("Can't find snap %s in remote %s/%s.", *(rs, rp, ri))
-        sys.exit(1)
+        return -1
 
     parent = ""
     for tmp in remote_snap_list:
@@ -839,12 +838,12 @@ def num_objs_of_local_image(pool, image):
     prefix = find_rbd_prefix_from_info(output)
     if prefix == "":
         logging.debug("failed to find rbd data prefix for image in pool.", *(i, p))
-        sys.exit(2)
+        return 0
     cmd = "rados -p %s ls | grep %s | wc -l" % (pool, prefix)
     rc, output = execute_cmd(cmd)
     if rc != 0:
         logging.debug("failed to lookup objects for image.")
-        sys.exit(rc)
+        return 0
     l = int(output[0])
 
     return pn + l
@@ -859,19 +858,19 @@ def num_objs_of_remote_image(snapname):
     rc, output = execute_cmd(cmd)
     if rc != 0:
         logging.debug("failed to find remote image %s in pool %s.", *(i, p))
-        sys.exit(rc)
+        return 0
 
     prefix = find_rbd_prefix_from_info(output)
     if prefix == "":
         logging.debug("failed to find rbd data prefix for image in pool.", *(i, p))
-        sys.exit(2)
+        return 0
 
     cmd = "ssh %s@%s \"rados -p %s ls  | grep %s | wc -l\" 2>/dev/null" \
             % (g_user, g_host, p, prefix)
     rc, output = execute_cmd(cmd)
     if rc != 0:
         logging.debug("find_most_recent_remote_image failed.")
-        sys.exit(rc)
+        return 0
 
     l = int(output[0])
     return l
@@ -953,33 +952,35 @@ def sanity_check(op, mode, pool, image, snapname, async):
     if op not in ["backup", "restore", "delete", "dump", "du", "du_snap",
             "delete_local_snaps", "query_backup", "query_restore", "cancel"]:
         logging.debug("invalid operation %s, should be [backup|restore|delete|dump|du]", (op))
-        sys.exit(1)
+        return -1
 
     if op == "backup" and mode not in ["full", "incr", "delta"]:
         logging.debug("invalid mode %s, should be [full|incr|delta]")
-        sys.exit(1)
+        return -1
 
     if op == "restore" and not snapname:
         logging.debug("Need to specify from which snapshot to restore.")
-        sys.exit(1)
+        return -1
 
     # TODO might support backup pool in future
     if op in ["backup", "restore", "du"] and (not pool or not image):
         logging.debug("Need to specify pool/image.")
-        sys.exit(1)
+        return -1
 
     if op in ["backup", "retore", "du"] and not g_remote_pool:
         logging.debug("Need to specify remote pool..")
-        sys.exit(1)
+        return -1
 
     if g_full_backup_to_keep < 0:
         logging.debug("Invalid parameter for number of full copies to keep.""")
-        sys.exit(1)
+        return -1
 
     if async:
         if op not in ["backup", "restore"]:
             logging.debug("Don't support operation %s in async mode.", (op))
-            sys.exit(1)
+            return -1
+
+    return 0
         
 if __name__ == '__main__':
 
@@ -1040,7 +1041,11 @@ if __name__ == '__main__':
     if options.async:
         async = True
 
-    sanity_check(op, mode, pool, image, snapname, async)
+    rc = sanity_check(op, mode, pool, image, snapname, async)
+    if rc != 0:
+        logging.debug("sanity check failed.")
+        sys.exit(-1)
+
     logging.debug("%s pool %s image %s mode %s, begin at %s.",
                    *(op, pool, image, mode, current))
 
@@ -1080,7 +1085,7 @@ if __name__ == '__main__':
         rc = cancel_snap(pool, image, snapname)
     else:
         logging.debug("Invalid operation.")
-        sys.exit(1)
+        sys.exit(-1)
 
     end_date = str(datetime.datetime.today().date())
     end_timestamp = str(datetime.datetime.today().time())
