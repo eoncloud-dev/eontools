@@ -48,6 +48,39 @@ Delete::
    [root@node-6 ~]# echo $?
    0
 
+Task cancellation::
+
+    [root@node-89 ~]# python rbd_backup.py -p rbd -i fio_rbd_test5 -o backup -m full -r rbd_89 -u root -d node-89 -a
+    rbd_89/fio_rbd_test5.2015-10-14.06:46:46.252225.bkp.image@2015-10-14.06:46:46.252225.snap
+    [root@node-89 ~]# ps aux | grep 252225
+    root     26889  0.0  0.0 106064  1296 ?        S    06:46   0:00 sh -c rbd export rbd/fio_rbd_test5@2015-10-14.06:46:46.252225.snap - 2>/dev/null | ssh root@node-89 rbd import - fio_rbd_test5.2015-10-14.06:46:46.252225.bkp.image -p rbd_89 2>/dev/null; echo $?
+    root     26890 22.0  0.4 7379556 276688 ?      Sl   06:46   0:02 rbd export rbd/fio_rbd_test5@2015-10-14.06:46:46.252225.snap -
+    root     26892 21.7  0.0  60364  3484 ?        S    06:46   0:02 ssh root@node-89 rbd import - fio_rbd_test5.2015-10-14.06:46:46.252225.bkp.image -p rbd_89
+    root     27088 25.0  0.4 2947152 301820 ?      Ssl  06:46   0:02 rbd import - fio_rbd_test5.2015-10-14.06:46:46.252225.bkp.image -p rbd_89
+    root     27814  0.0  0.0 103248   888 pts/1    S+   06:46   0:00 grep 252225
+    [root@node-89 ~]# python rbd_backup.py -p rbd -i fio_rbd_test5 -o cancel -s rbd_89/fio_rbd_test5.2015-10-14.06:46:46.252225.bkp.image@2015-10-14.06:46:46.252225.snap -u root -d node-89
+    sh: line 0: kill: (28109) - No such process
+    Warning: Permanently added 'node-89,10.21.17.19' (RSA) to the list of known hosts.
+    Traceback (most recent call last):
+      File "rbd_backup.py", line 1049, in <module>
+        rc, snapname = backup_image_async(pool, image, mode)
+      File "rbd_backup.py", line 541, in backup_image_async
+        asynchronize_exec(backup_image, "backup", pool, image, mode, snapname)
+      File "rbd_backup.py", line 524, in asynchronize_exec
+        rc, tmp = async_fun(pool, image, mode)
+      File "rbd_backup.py", line 391, in backup_image
+        rc, output = execute_cmd(cmd)
+      File "rbd_backup.py", line 67, in execute_cmd
+        rc = int(res.split('\n')[-2])
+    IndexError: list index out of range
+    bash: line 0: kill: (28202) - No such process
+    [root@node-89 ~]# ps aux | grep 252225
+    root     30101  0.0  0.0 103244   884 pts/1    S+   06:47   0:00 grep 252225
+    [root@node-89 ~]# rbd -p rbd snap ls fio_rbd_test5
+    [root@node-89 ~]# rbd -p rbd_89 ls | grep fio_rbd_test5.2015-10-14.06:46:46.252225.bkp.image
+    [root@node-89 ~]# 
+
+
 
 Backup Chain, ONLY USED IN DEBUG MODE ::
 
