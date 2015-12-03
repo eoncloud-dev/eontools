@@ -58,7 +58,7 @@ ________________________
     zhangzh@base[~]$cat salt-api-async.py
     from SaltAPIClient import UserGroupClient
     from SaltAPIClient import JobsClient
-    my_client = UserGroupClient( **async=True** )
+    my_client = UserGroupClient( async=True )
     job_client = JobsClient()
     r = my_client.add_user(['eonfabric-cobbler-client2',
                             'eonfabric-cobbler-client4.local.lan'],
