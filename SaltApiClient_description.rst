@@ -36,9 +36,7 @@ ________________________
 ::
 
     zhangzh@base[~]$cat salt-api.py
-    import sys
-    sys.path.append('/home/zhangzh/git/eoncloud/eonbazaar/SaltAPIClient')
-    from UserGroupClient import UserGroupClient
+    from SaltAPIClient import UserGroupClient
     my_client = UserGroupClient()
     r = my_client.add_user(['eonfabric-cobbler-client2',
                             'eonfabric-cobbler-client4.local.lan'],
@@ -58,11 +56,9 @@ ________________________
 ::
 
     zhangzh@base[~]$cat salt-api-async.py
-    import sys
-    sys.path.append('/home/zhangzh/git/eoncloud/eonbazaar/SaltAPIClient')
-    from UserGroupClient import UserGroupClient
-    from JobsClient import JobsClient
-    my_client = UserGroupClient(async=True)
+    from SaltAPIClient import UserGroupClient
+    from SaltAPIClient import JobsClient
+    my_client = UserGroupClient( **async=True** )
     job_client = JobsClient()
     r = my_client.add_user(['eonfabric-cobbler-client2',
                             'eonfabric-cobbler-client4.local.lan'],
