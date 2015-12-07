@@ -36,8 +36,10 @@ ________________________
 ::
 
     zhangzh@base[~]$cat salt-api.py
-    from SaltAPIClient import UserGroupClient
-    my_client = UserGroupClient()
+    from salt_api_client import UserGroupClient
+    my_client = UserGroupClient(endpoint = "https://10.6.14.212:8080",
+                                user = "eonfabric",
+                                password = "eonfabric")
     r = my_client.add_user(['eonfabric-cobbler-client2',
                             'eonfabric-cobbler-client4.local.lan'],
                            'fake_user')
@@ -56,9 +58,12 @@ ________________________
 ::
 
     zhangzh@base[~]$cat salt-api-async.py
-    from SaltAPIClient import UserGroupClient
-    from SaltAPIClient import JobsClient
-    my_client = UserGroupClient( async=True )
+    from salt_api_client import UserGroupClient
+    from salt_api_client import JobsClient
+    my_client = UserGroupClient(endpoint = "https://10.6.14.212:8080",
+                                user = "eonfabric",
+                                password = "eonfabric",
+                                async=True)
     job_client = JobsClient()
     r = my_client.add_user(['eonfabric-cobbler-client2',
                             'eonfabric-cobbler-client4.local.lan'],
